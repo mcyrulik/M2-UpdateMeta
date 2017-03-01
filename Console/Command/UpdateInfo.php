@@ -2,6 +2,7 @@
 
 namespace Room204\UpdateNameMeta\Console\Command;
 
+use Magento\Framework\App\Filesystem\DirectoryList;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Command\Command;
@@ -9,6 +10,8 @@ use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
 use Magento\Framework\Registry;
 use Magento\Catalog\Api\CategoryRepositoryInterface;
 use Magento\Catalog\Api\ProductRepositoryInterface;
+use Goodwill\AdminTheme\Model\PricingAlgorithmFunctions;
+use Magento\Framework\Filesystem;
 
 
 /**
@@ -30,6 +33,13 @@ class UpdateInfo extends Command
 
     protected $_productRepository;
 
+    protected $_priceFunctions;
+
+    /**
+     * @var Filesystem
+     */
+    protected $_filesystem;
+
     /**
      * Constructor
      */
@@ -38,11 +48,16 @@ class UpdateInfo extends Command
         CollectionFactory $productCollection,
         CategoryRepositoryInterface $categoryRepository,
         Registry $registry,
-        ProductRepositoryInterface $productRepository
+        ProductRepositoryInterface $productRepository,
+        \Magento\Eav\Model\Config $eavConfig,
+        Filesystem $filesystem
+
     ) {
+        $this->_priceFunctions = new PricingAlgorithmFunctions($eavConfig, $categoryRepository);
         $this->productCollection = $productCollection;
         $this->_registry = $registry;
         $this->_state = $state;
+        $this->_filesystem = $filesystem;
         $this->_categoryRepository = $categoryRepository;
         $this->_productRepository = $productRepository;
         parent::__construct();
@@ -64,7 +79,13 @@ class UpdateInfo extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
-        $spacer = "        ";
+        $path = $this->_filesystem->getDirectoryWrite(DirectoryList::VAR_DIR)->getAbsolutePath("reports");
+        if (!is_dir($path)) {
+            mkdir($path, 0755, true);
+        }
+
+        $filePath = $path."/".'MetaUpdates.txt';
+
         $this->_registry->register('isSecureArea', true);
         $this->_state->setAreaCode('adminhtml');
 
@@ -77,12 +98,16 @@ class UpdateInfo extends Command
 
         /** @var \Magento\Catalog\Model\Product\Interceptor $product */
         foreach ($allProducts as $product) {
-            $output->write(str_pad($counter, 6, "0", STR_PAD_LEFT)." => ");
-            $output->write($product->getSku().": ");
-
+            $brand = $product->getData('manufacturer');
+            $condition = $product->getData('gw_condition');
             /** @var \Magento\Catalog\Model\Category\Interceptor $category */
             $category = $this->_categoryRepository->get($product->getCategoryIds()[0]);
-            $parent = $this->_categoryRepository->get($category->getParentId())->getName();
+            $parent = $this->getCategoryParent($product->getCategoryIds()[0]);
+            $specSize = (empty($product->getData('gw_specialty_length')) ? null : $product->getData('gw_specialty_length'));
+
+
+            $output->write(str_pad($counter, 6, "0", STR_PAD_LEFT)."\t");
+            $output->write($product->getSku()."\t");
 
             $categoryText = "Women/".$parent."/".$category->getName();
 
@@ -100,10 +125,23 @@ class UpdateInfo extends Command
             $metaTitle = $categoryText." ".$product->getAttributeText('manufacturer')." Size ".$size;
             $metaDescription = "Get This ".$product->getAttributeText('manufacturer')." ".$categoryText;
 
+            $currentPrice = number_format($product->getPrice(), 2);
+            $newPrice = number_format($this->_priceFunctions->getAlgorithmPrice($brand, $category->getId(), $condition, $parent, $specSize), 2);
+
             $product->setName($productName);
             $product->setData('meta_description', $metaDescription);
             $product->setData('meta_title', $metaTitle);
             $product->setUrlKey($this->urlFilter($urlKey));
+            $product->setPrice($newPrice);
+
+            if ($currentPrice != $newPrice) {
+                $changed = "CHANGED\t";
+            } else {
+                $changed = "UNCHANGED\t";
+            }
+
+
+            $output->write($currentPrice."\t".$newPrice."\t".$changed);
 
             $product->save();
 
@@ -124,4 +162,15 @@ class UpdateInfo extends Command
         return strtolower($text);
     }
 
+    /**
+     * @param $category
+     *
+     * @return string
+     */
+    private function getCategoryParent($category)
+    {
+        $category = $this->_categoryRepository->get((int) $category);
+
+        return $this->_categoryRepository->get($category->getParentId())->getName();
+    }
 }
