@@ -143,7 +143,7 @@ class UpdateInfo extends Command
 
             $output->write($currentPrice."\t".$newPrice."\t".$changed);
 
-            $product->save();
+            $this->_productRepository->save($product);
 
             $output->writeln($productName);
             $counter++;
