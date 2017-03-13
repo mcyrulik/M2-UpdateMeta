@@ -91,7 +91,8 @@ class UpdateInfo extends Command
 
         $allProducts = $this->productCollection
             ->create()
-            ->addAttributeToSelect('*');
+            ->addAttributeToSelect('*')
+            ->addAttributeToFilter('entity_id', ['gteq' => 152]);
 
         $output->writeln('Updating Name, meta, etc..');
         $counter = 1;
@@ -106,7 +107,7 @@ class UpdateInfo extends Command
             $specSize = (empty($product->getData('gw_specialty_length')) ? null : $product->getData('gw_specialty_length'));
 
 
-            $output->write(str_pad($counter, 6, "0", STR_PAD_LEFT)."\t");
+            $output->write(str_pad($product->getId(), 6, "0", STR_PAD_LEFT)."\t");
             $output->write($product->getSku()."\t");
 
             $categoryText = "Women/".$parent."/".$category->getName();
