@@ -4,7 +4,7 @@
   "require": {
     "php": "~5.5.0|~5.6.0|~7.0.0"
   },
-  "type": "magento2-module",
+  "type": "library",
   "version": "100.1.1",
   "license": [
     "OSL-3.0",
